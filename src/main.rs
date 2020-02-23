@@ -18,7 +18,7 @@ const HELP: &str = r#"Blocking read()
 fn match_event() -> Result<()> {
     let mut stdout = stdout();
     let mut line = String::new();
-    let mut currentMaxColumn = 0;
+    let mut current_max_column = 0;
 
     loop {
         let event = read()?;
@@ -42,7 +42,7 @@ fn match_event() -> Result<()> {
             Event::Key(KeyEvent { code: KeyCode::Left, .. }) => { stdout.queue(cursor::MoveLeft(1)).expect("Error"); }
             Event::Key(KeyEvent {code: KeyCode::Right, .. }) => {
                 let (column, _) = cursor::position().unwrap();
-                if column < currentMaxColumn {
+                if column < current_max_column {
                     stdout.queue(cursor::MoveRight(1)).expect("Error");
                 }
             }
@@ -51,26 +51,43 @@ fn match_event() -> Result<()> {
                 ..
             }) => {
                 let (column, _) = cursor::position().unwrap();
-                // line.remove(column.try_into().unwrap());
-                line.remove(column as usize);
-                queue!(stdout, cursor::MoveLeft(1), Clear(ClearType::CurrentLine));
-                print!("{}", line);
-                stdout.queue(cursor::SavePosition);
-                println!("\n\r {}", line);
-                stdout.queue(cursor::RestorePosition);
-                currentMaxColumn -= 1;
+                // There is no letter at column 0, 
+                // to delete a letter, that should start at column 1 (char index 0 of string)
+                if line.len() == 0 || column == 0 {
+                    continue;
+                }
+                line.remove((column-1) as usize);
+                queue!(stdout, Clear(ClearType::CurrentLine), cursor::SavePosition).expect("Error");
+                print!("\r{}", line);
+                queue!(stdout, cursor::RestorePosition, cursor::MoveLeft(1)).expect("Error");
+
+                queue!(stdout, cursor::SavePosition, 
+                    cursor::MoveToNextLine(1),
+                    Clear(ClearType::CurrentLine)
+                ).expect("Errro");
+                println!("{}", line);
+                stdout.queue(cursor::RestorePosition).expect("Error");
+                current_max_column -= 1;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
             }) => {
+                let (column, _) = cursor::position().unwrap();
                 // Print in the current line
                 // Show suggestion in the next line
-                print!("{}", c);
-                line.push(c);
+
+                if line.len() == (column as usize) {
+                    print!("{}", c);
+                    line.push(c);
+                } else {
+                    // Very inefficient, 0(n) for every operation, need sort of a link list data structure
+
+                }
+                
                 stdout.queue(cursor::SavePosition)?;
-                println!("\n\r {}", line);
+                println!("\n\r{}", line);
                 stdout.queue(cursor::RestorePosition)?;
-                currentMaxColumn += 1;
+                current_max_column += 1;
             }
             _ => {}
         }
