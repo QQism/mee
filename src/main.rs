@@ -55,13 +55,9 @@ fn match_event() -> Result<()> {
                 print!("\r{}", line);
                 queue!(stdout, cursor::RestorePosition, cursor::MoveLeft(1)).expect("Error");
 
-                queue!(stdout, cursor::SavePosition,
-                    cursor::MoveToNextLine(1),
-                    Clear(ClearType::CurrentLine)
-                ).expect("Errro");
-                println!("{}", line);
-                queue!(stdout, cursor::RestorePosition).expect("Error");
                 current_max_column -= 1;
+
+                show_sugesstions(&mut stdout, line.clone());
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
@@ -93,7 +89,7 @@ fn match_event() -> Result<()> {
 
                 current_max_column += 1;
 
-                show_sugesstion(&mut stdout, &mut line);
+                show_sugesstions(&mut stdout, line.clone());
             }
             _ => {}
         }
@@ -104,7 +100,7 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn show_sugesstion(stdout: &mut Stdout, line: &mut String) -> Result<()> {
+fn show_sugesstion(stdout: &mut Stdout, line: String) -> Result<()> {
     queue!(stdout,
            cursor::SavePosition,
            cursor::MoveToNextLine(1),
