@@ -69,6 +69,8 @@ fn match_event() -> Result<()> {
                 if line.len() == (column as usize) {
                     print!("{}", c);
                     line.push(c);
+                } else if line.len() < (column as usize) {
+
                 } else {
                     let (str1, str2) = line.split_at(column as usize);
 
@@ -100,11 +102,12 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn show_sugesstion(stdout: &mut Stdout, line: String) -> Result<()> {
+fn show_sugesstions(stdout: &mut Stdout, line: String) -> Result<()> {
     queue!(stdout,
            cursor::SavePosition,
            cursor::MoveToNextLine(1),
            Clear(ClearType::CurrentLine))?;
+    // println!("{}", '\u{2500}');
     print!("{}", line);
     queue!(stdout, cursor::RestorePosition)?;
 
