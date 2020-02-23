@@ -1,4 +1,4 @@
-use std::io::{stdout, Write};
+use std::io::{stdout, Write, Stdout};
 use crossterm::{
     cursor,
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -8,12 +8,6 @@ use crossterm::{
     queue,
     Result,
 };
-
-const HELP: &str = r#"Blocking read()
- - Keyboard, mouse and terminal resize events enabled
- - Hit "c" to print current cursor position
- - Use Esc to quit
-"#;
 
 fn match_event() -> Result<()> {
     let mut stdout = stdout();
@@ -43,7 +37,7 @@ fn match_event() -> Result<()> {
             Event::Key(KeyEvent {code: KeyCode::Right, .. }) => {
                 let (column, _) = cursor::position().unwrap();
                 if column < current_max_column {
-                    stdout.queue(cursor::MoveRight(1)).expect("Error");
+                    queue!(stdout, cursor::MoveRight(1)).expect("Error");
                 }
             }
             Event::Key(KeyEvent {
@@ -51,22 +45,22 @@ fn match_event() -> Result<()> {
                 ..
             }) => {
                 let (column, _) = cursor::position().unwrap();
-                // There is no letter at column 0, 
-                // to delete a letter, that should start at column 1 (char index 0 of string)
-                if line.len() == 0 || column == 0 {
+                // to delete a letter, cursor column should be at least 1, then move 1 step left to zero and delete the first letter
+                if line.is_empty() || column == 0 {
                     continue;
                 }
+
                 line.remove((column-1) as usize);
                 queue!(stdout, Clear(ClearType::CurrentLine), cursor::SavePosition).expect("Error");
                 print!("\r{}", line);
                 queue!(stdout, cursor::RestorePosition, cursor::MoveLeft(1)).expect("Error");
 
-                queue!(stdout, cursor::SavePosition, 
+                queue!(stdout, cursor::SavePosition,
                     cursor::MoveToNextLine(1),
                     Clear(ClearType::CurrentLine)
                 ).expect("Errro");
                 println!("{}", line);
-                stdout.queue(cursor::RestorePosition).expect("Error");
+                queue!(stdout, cursor::RestorePosition).expect("Error");
                 current_max_column -= 1;
             }
             Event::Key(KeyEvent {
@@ -80,14 +74,26 @@ fn match_event() -> Result<()> {
                     print!("{}", c);
                     line.push(c);
                 } else {
-                    // Very inefficient, 0(n) for every operation, need sort of a link list data structure
+                    let (str1, str2) = line.split_at(column as usize);
 
+                    let first_str = String::from(str1);
+                    let second_str = String::from(str2);
+
+                    queue!(stdout,
+                           Clear(ClearType::CurrentLine),
+                           cursor::SavePosition, cursor::MoveToColumn(0)).expect("Error");
+
+                    line.clear();
+                    line.push_str(&first_str);
+                    line.push(c);
+                    line.push_str(&second_str);
+                    print!("{}", line);
+                    queue!(stdout, cursor::RestorePosition, cursor::MoveRight(1)).expect("Error");
                 }
-                
-                stdout.queue(cursor::SavePosition)?;
-                println!("\n\r{}", line);
-                stdout.queue(cursor::RestorePosition)?;
+
                 current_max_column += 1;
+
+                show_sugesstion(&mut stdout, &mut line);
             }
             _ => {}
         }
@@ -98,9 +104,18 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
-    println!("{}", HELP);
+fn show_sugesstion(stdout: &mut Stdout, line: &mut String) -> Result<()> {
+    queue!(stdout,
+           cursor::SavePosition,
+           cursor::MoveToNextLine(1),
+           Clear(ClearType::CurrentLine))?;
+    print!("{}", line);
+    queue!(stdout, cursor::RestorePosition)?;
 
+    Ok(())
+}
+
+fn main() -> Result<()> {
     enable_raw_mode()?;
 
     let mut stdout = stdout();
@@ -108,10 +123,6 @@ fn main() -> Result<()> {
     execute!(stdout, EnableMouseCapture)?;
 
     match_event()?;
-
-    // if let Err(e) = print_events() {
-    //     println!("Error: {:?}\r", e);
-    // }
 
     execute!(stdout, DisableMouseCapture)?;
 
