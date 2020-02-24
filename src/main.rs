@@ -30,7 +30,7 @@ fn match_event() -> Result<()> {
             }) => {
                 // cursor::MoveToNextLine(1);
                 // Print the suggestion move to the next line
-                print!("\n\r>> ");
+                echo(&mut stdout, line.clone());
                 line.clear();
             }
             Event::Key(KeyEvent { code: KeyCode::Left, .. }) => { stdout.queue(cursor::MoveLeft(1)).expect("Error"); }
@@ -51,8 +51,9 @@ fn match_event() -> Result<()> {
                 }
 
                 line.remove((column-1) as usize);
-                queue!(stdout, Clear(ClearType::CurrentLine), cursor::SavePosition).expect("Error");
-                print!("\r{}", line);
+                queue!(stdout, Clear(ClearType::CurrentLine), cursor::SavePosition, cursor::MoveToColumn(0)).expect("Error");
+                // print!("{}", line);
+                write!(stdout, "{}", line)?;
                 queue!(stdout, cursor::RestorePosition, cursor::MoveLeft(1)).expect("Error");
 
                 current_max_column -= 1;
@@ -63,11 +64,10 @@ fn match_event() -> Result<()> {
                 code: KeyCode::Char(c), ..
             }) => {
                 let (column, _) = cursor::position().unwrap();
-                // Print in the current line
-                // Show suggestion in the next line
 
                 if line.len() == (column as usize) {
-                    print!("{}", c);
+                    write!(stdout, "{}", c)?;
+                    // queue!(stdout, cursor("{}", c))?;
                     line.push(c);
                 } else if line.len() < (column as usize) {
 
@@ -85,7 +85,8 @@ fn match_event() -> Result<()> {
                     line.push_str(&first_str);
                     line.push(c);
                     line.push_str(&second_str);
-                    print!("{}", line);
+                    // print!("{}", line);
+                    write!(stdout, "{}", line)?;
                     queue!(stdout, cursor::RestorePosition, cursor::MoveRight(1)).expect("Error");
                 }
 
@@ -102,14 +103,41 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn show_sugesstions(stdout: &mut Stdout, line: String) -> Result<()> {
+fn clear_suggestions(stdout: &mut Stdout) -> Result<()> {
     queue!(stdout,
            cursor::SavePosition,
            cursor::MoveToNextLine(1),
-           Clear(ClearType::CurrentLine))?;
-    // println!("{}", '\u{2500}');
-    print!("{}", line);
+           Clear(ClearType::CurrentLine),
+           cursor::MoveToNextLine(1),
+           Clear(ClearType::CurrentLine),
+           cursor::MoveToNextLine(1),
+           Clear(ClearType::CurrentLine),
+           cursor::RestorePosition)?;
+
+    Ok(())
+}
+
+fn show_sugesstions(mut stdout: &mut Stdout, line: String) -> Result<()> {
+    clear_suggestions(&mut stdout)?;
+    queue!(stdout, cursor::SavePosition, cursor::MoveToNextLine(1))?;
+    write!(stdout, "\u{250C}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}")?;
+    queue!(stdout, cursor::MoveToNextLine(1))?;
+    write!(stdout, "\u{2502} {} \u{2502}", line)?;
+    queue!(stdout, cursor::MoveToNextLine(1))?;
+    write!(stdout, "\u{2514}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}")?;
     queue!(stdout, cursor::RestorePosition)?;
+
+    Ok(())
+}
+
+fn echo(mut stdout: &mut Stdout, line: String) -> Result<()> {
+    clear_suggestions(&mut stdout)?;
+
+    queue!(stdout, cursor::MoveToNextLine(1))?;
+
+    print!("You typed: {}", line);
+
+    queue!(stdout, cursor::MoveToNextLine(1))?;
 
     Ok(())
 }
