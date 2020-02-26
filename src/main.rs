@@ -138,21 +138,50 @@ fn clear_suggestions(stdout: &mut Stdout, terminal_size: &mut TerminalSize) -> R
 fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
     clear_suggestions(&mut stdout, terminal_size)?;
 
-    // let (_, rows) = cursor::position().unwrap();
+    let (_, rows) = cursor::position().unwrap();
 
-    // if (rows + 3) >= terminal_size.rows {
-    //     queue!(stdout,
-    //            cursor::SavePosition,
-    //            ScrollUp(3),
-    //            cursor::RestorePosition)?;
-    // }
+    if (rows + 3) >= terminal_size.rows {
+        queue!(stdout,
+               // Scroll up and move the cursor back to where it was
+               ScrollUp(3),
+               cursor::MoveUp(3)
+        )?;
+    }
 
     queue!(stdout, cursor::SavePosition, cursor::MoveToNextLine(1))?;
-    write!(stdout, "\u{250C}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}")?;
+
+    // Render the top border
+    write!(stdout, "\u{250C}")?; // ┌
+
+    for col in (0..terminal_size.cols-2) {
+        write!(stdout, "\u{2500}")?; // ─
+    }
+
+    write!(stdout, "\u{2510}")?; // ┐
+
+    // Render the body
     queue!(stdout, cursor::MoveToNextLine(1))?;
-    write!(stdout, "\u{2502} {} \u{2502}", line)?;
+
+    // Render the left border
+    write!(stdout, "\u{2502} ")?;
+
+    write!(stdout, "{}", line)?;
+
+    // Render the right border
+    queue!(stdout, cursor::MoveToColumn(terminal_size.cols))?;
+    write!(stdout, "\u{2502}")?;
+
     queue!(stdout, cursor::MoveToNextLine(1))?;
-    write!(stdout, "\u{2514}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}")?;
+
+    // Render the bottom border
+    write!(stdout, "\u{2514}")?;
+
+    for col in (0..terminal_size.cols-2) {
+        write!(stdout, "\u{2500}")?; // ─
+    }
+
+    write!(stdout, "\u{2518}")?;
+
     queue!(stdout, cursor::RestorePosition)?;
 
     Ok(())
