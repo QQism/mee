@@ -3,7 +3,7 @@ use crossterm::{
     cursor,
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, size, ScrollUp, ScrollDown},
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, size, ScrollUp},
     QueueableCommand,
     queue,
     Result,
@@ -34,6 +34,7 @@ fn match_event() -> Result<()> {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CONTROL
             }) => {
+                clear_suggestions(&mut stdout)?;
                 break;
             }
             Event::Key(KeyEvent {
@@ -120,67 +121,68 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn clear_suggestions(stdout: &mut Stdout, terminal_size: &mut TerminalSize) -> Result<()> {
-    let (col, _) = cursor::position().unwrap();
+fn clear_suggestions(stdout: &mut Stdout) -> Result<()> {
     queue!(stdout,
            cursor::SavePosition,
            cursor::MoveToNextLine(1),
-           Clear(ClearType::CurrentLine),
-           cursor::MoveToNextLine(1),
-           Clear(ClearType::CurrentLine),
-           cursor::MoveToNextLine(1),
-           Clear(ClearType::CurrentLine),
+           Clear(ClearType::FromCursorDown),
            cursor::RestorePosition)?;
 
     Ok(())
 }
 
 fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
-    clear_suggestions(&mut stdout, terminal_size)?;
+    clear_suggestions(&mut stdout)?;
 
     let (_, rows) = cursor::position().unwrap();
 
-    if (rows + 3) >= terminal_size.rows {
+    let suggestion_height = 10;
+
+    if (rows + suggestion_height) >= terminal_size.rows {
         queue!(stdout,
                // Scroll up and move the cursor back to where it was
-               ScrollUp(3),
-               cursor::MoveUp(3)
+               ScrollUp(suggestion_height),
+               cursor::MoveUp(suggestion_height)
         )?;
     }
 
     queue!(stdout, cursor::SavePosition, cursor::MoveToNextLine(1))?;
 
     // Render the top border
-    write!(stdout, "\u{250C}")?; // ┌
+    write!(stdout, "\u{256D}")?; // ╭
 
-    for col in (0..terminal_size.cols-2) {
+    for _col in 0..terminal_size.cols-2 {
         write!(stdout, "\u{2500}")?; // ─
     }
 
-    write!(stdout, "\u{2510}")?; // ┐
+    write!(stdout, "\u{256E}")?; // ╮
 
     // Render the body
-    queue!(stdout, cursor::MoveToNextLine(1))?;
 
-    // Render the left border
-    write!(stdout, "\u{2502} ")?;
 
-    write!(stdout, "{}", line)?;
+    for _ in 0..suggestion_height-2 {
+        queue!(stdout, cursor::MoveToNextLine(1))?;
 
-    // Render the right border
-    queue!(stdout, cursor::MoveToColumn(terminal_size.cols))?;
-    write!(stdout, "\u{2502}")?;
+        // Render the left border
+        write!(stdout, "\u{2502} ")?; // │
+
+        write!(stdout, "{}", line)?;
+
+        // Render the right border
+        queue!(stdout, cursor::MoveToColumn(terminal_size.cols-1))?;
+        write!(stdout, " \u{2502}")?; // │
+    }
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
     // Render the bottom border
-    write!(stdout, "\u{2514}")?;
+    write!(stdout, "\u{2570}")?; // ╰
 
-    for col in (0..terminal_size.cols-2) {
+    for _col in 0..terminal_size.cols-2 {
         write!(stdout, "\u{2500}")?; // ─
     }
 
-    write!(stdout, "\u{2518}")?;
+    write!(stdout, "\u{256F}")?; // ╯
 
     queue!(stdout, cursor::RestorePosition)?;
 
@@ -188,7 +190,7 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, l
 }
 
 fn echo(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
-    clear_suggestions(&mut stdout, terminal_size)?;
+    clear_suggestions(&mut stdout)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
