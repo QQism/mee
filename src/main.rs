@@ -9,6 +9,10 @@ use crossterm::{
     Result,
 };
 
+use std::fs::File;
+use std::io::BufReader;
+use std::io::BufRead;
+
 struct TerminalSize {
     cols: u16,
     rows: u16,
@@ -25,6 +29,8 @@ fn match_event() -> Result<()> {
         cols: terminal_cols,
         rows: terminal_rows,
     };
+
+    let words = load_words();
 
     loop {
         let event = read()?;
@@ -71,7 +77,7 @@ fn match_event() -> Result<()> {
 
                 current_max_column -= 1;
 
-                show_suggestions(&mut stdout, &mut terminal_size, line.clone())?;
+                show_suggestions(&mut stdout, &mut terminal_size, line.clone(), &words)?;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
@@ -105,7 +111,7 @@ fn match_event() -> Result<()> {
 
                 current_max_column += 1;
 
-                show_suggestions(&mut stdout, &mut terminal_size, line.clone())?;
+                show_suggestions(&mut stdout, &mut terminal_size, line.clone(), &words)?;
             }
             Event::Resize(columns, rows) => {
                 println!("Terminal size changed: Columns {} Rows {}", columns, rows);
@@ -131,12 +137,12 @@ fn clear_suggestions(stdout: &mut Stdout) -> Result<()> {
     Ok(())
 }
 
-fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String, words: &Vec<String>) -> Result<()> {
     clear_suggestions(&mut stdout)?;
 
     let (_, rows) = cursor::position().unwrap();
 
-    let suggestion_height = 10;
+    let suggestion_height = 3;
 
     if (rows + suggestion_height) >= terminal_size.rows {
         queue!(stdout,
@@ -166,7 +172,21 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, l
         // Render the left border
         write!(stdout, "\u{2502} ")?; // │
 
-        write!(stdout, "{}", line)?;
+        let mut col = 3;
+
+        for word in words {
+            if word.starts_with(&line.to_lowercase()) {
+                col += word.chars().count();
+
+                if col > ((terminal_size.cols-10) as usize) {
+                    break;
+                }
+
+                write!(stdout, "{} ", word)?;
+            }
+        }
+
+        // write!(stdout, "{}", line)?;
 
         // Render the right border
         queue!(stdout, cursor::MoveToColumn(terminal_size.cols-1))?;
@@ -201,10 +221,28 @@ fn echo(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String)
     Ok(())
 }
 
+fn load_words() -> Vec<String> {
+    let file = File::open("words.txt").expect("Cannot find the words.txt file");
+    let reader = BufReader::new(file);
+
+    let mut words: Vec<String> = Vec::new();
+
+    for line in reader.lines() {
+        let uline = line.unwrap();
+        words.push(uline);
+    }
+
+    words
+}
+
 fn main() -> Result<()> {
     enable_raw_mode()?;
 
     let mut stdout = stdout();
+
+    let (cols, rows) = size()?;
+
+    println!("Terminal size {} cols x {} rows\n\r", cols, rows);
 
     execute!(stdout, EnableMouseCapture)?;
 
