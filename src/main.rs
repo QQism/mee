@@ -21,6 +21,7 @@ struct TerminalSize {
 fn match_event() -> Result<()> {
     let mut stdout = stdout();
     let mut line = String::new();
+    let mut token = String::new();
     let mut current_max_column = 0;
 
     let (terminal_cols, terminal_rows) = size()?;
@@ -63,35 +64,107 @@ fn match_event() -> Result<()> {
                 code: KeyCode::Backspace,
                 ..
             }) => {
-                let (column, _) = cursor::position().unwrap();
+                let (current_col, _) = cursor::position().unwrap();
                 // to delete a letter, cursor column should be at least 1, then move 1 step left to zero and delete the first letter
-                if line.is_empty() || column == 0 {
+                if line.is_empty() || current_col == 0 {
                     continue;
                 }
 
-                line.remove((column-1) as usize);
+                line.remove((current_col-1) as usize);
                 queue!(stdout, Clear(ClearType::CurrentLine), cursor::SavePosition, cursor::MoveToColumn(0)).expect("Error");
-                // print!("{}", line);
                 write!(stdout, "{}", line)?;
                 queue!(stdout, cursor::RestorePosition, cursor::MoveLeft(1)).expect("Error");
 
                 current_max_column -= 1;
 
-                show_suggestions(&mut stdout, &mut terminal_size, line.clone(), &words)?;
+                // Detect the current token
+                let mut new_col = (current_col - 1) as usize;
+                let mut char_iter = line.chars();
+
+                // Check the left side
+                let mut left_part = String::new();
+
+                if new_col > 0 {
+                    loop {
+                        // println!("new_col {}", new_col);
+                        let c = char_iter.nth(new_col-1);
+
+                        if c == None || c == Some(' ') {
+                            break;
+                        }
+
+                        left_part.push(c.unwrap());
+
+                        new_col -= 1;
+
+                        if new_col < 1 {
+                            break;
+                        }
+                    }
+                }
+                // Then check the right side
+                let mut right_part = String::new();
+
+                new_col = (current_col-1) as usize;
+
+                let line_count = (line.chars().count() as u16);
+
+                if new_col < (line_count as usize) {
+
+                    loop {
+                        let c = char_iter.nth(new_col-1);
+
+                        if c == None || c == Some(' ') {
+                            break;
+                        }
+
+                        right_part.push(c.unwrap());
+
+                        new_col += 1;
+
+                        if new_col >= (line_count as usize) {
+                            break;
+                        }
+                    }
+                }
+
+                token.clear();
+                println!("\nLeft: {}", left_part);
+                println!("\nRight: {}", right_part);
+                loop {
+                    let c = left_part.pop();
+                    if c == None {
+                        break;
+                    }
+
+                    token.push(c.unwrap());
+                }
+
+                token.push_str(&right_part);
+                println!("\nToken: {}", token);
+
+                show_suggestions(&mut stdout, &mut terminal_size, token.clone(), &words)?;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
-            }) => {
-                let (column, _) = cursor::position().unwrap();
+            }) => {let (current_col, _) = cursor::position().unwrap();
 
-                if line.len() == (column as usize) {
+                if line.len() == (current_col as usize) {
                     write!(stdout, "{}", c)?;
                     // queue!(stdout, cursor("{}", c))?;
                     line.push(c);
-                } else if line.len() < (column as usize) {
 
+                    // update the current token
+
+                    if c == ' ' {
+                        token.clear();
+                    } else {
+                        token.push(c);
+                    }
+                } else if line.len() < (current_col as usize) {
+                    // Not possible, the cursor cannot be further the current line
                 } else {
-                    let (str1, str2) = line.split_at(column as usize);
+                    let (str1, str2) = line.split_at(current_col as usize);
 
                     let first_str = String::from(str1);
                     let second_str = String::from(str2);
@@ -111,7 +184,11 @@ fn match_event() -> Result<()> {
 
                 current_max_column += 1;
 
-                show_suggestions(&mut stdout, &mut terminal_size, line.clone(), &words)?;
+                // To detect the current token, first check the left side
+                let new_col = current_col + 1;
+                // then check the right side
+
+                show_suggestions(&mut stdout, &mut terminal_size, token.clone(), &words)?;
             }
             Event::Resize(columns, rows) => {
                 println!("Terminal size changed: Columns {} Rows {}", columns, rows);
@@ -142,7 +219,7 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, l
 
     let (_, rows) = cursor::position().unwrap();
 
-    let suggestion_height = 3;
+    let suggestion_height = 3; // need to >= 3
 
     if (rows + suggestion_height) >= terminal_size.rows {
         queue!(stdout,
@@ -165,33 +242,50 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, l
 
     // Render the body
 
+    let mut current_suggestion_line = 0;
 
-    for _ in 0..suggestion_height-2 {
-        queue!(stdout, cursor::MoveToNextLine(1))?;
+    queue!(stdout, cursor::MoveToNextLine(1))?;
 
-        // Render the left border
-        write!(stdout, "\u{2502} ")?; // │
+    // Render the left border
+    write!(stdout, "\u{2502} ")?; // │
 
-        let mut col = 3;
+    // Start at col 3rd
+    let mut col = 3;
 
-        for word in words {
-            if word.starts_with(&line.to_lowercase()) {
-                col += word.chars().count();
+    for word in words {
+        if word.starts_with(&line.to_lowercase()) {
+            let word_spaces = word.chars().count() + 1; // there is one space between suggestions, so +1;
 
-                if col > ((terminal_size.cols-10) as usize) {
+            col += word_spaces;
+
+            if col > ((terminal_size.cols-3) as usize) {
+                // close the current line
+                // Render the right border
+                queue!(stdout, cursor::MoveToColumn(terminal_size.cols-1))?;
+                write!(stdout, " \u{2502}")?; // │
+
+                // if still in the suggestion area
+                if current_suggestion_line < suggestion_height {
+                    queue!(stdout, cursor::MoveToNextLine(1))?;
+                    col = 3 + word_spaces;
+                    current_suggestion_line += 1;
+
+                    // Render the left border
+                    write!(stdout, "\u{2502} ")?; // │
+                } else {
                     break;
                 }
-
-                write!(stdout, "{} ", word)?;
             }
+
+            write!(stdout, "{} ", word)?;
         }
-
-        // write!(stdout, "{}", line)?;
-
-        // Render the right border
-        queue!(stdout, cursor::MoveToColumn(terminal_size.cols-1))?;
-        write!(stdout, " \u{2502}")?; // │
     }
+
+    // write!(stdout, "{}", line)?;
+
+    // Render the right border
+    queue!(stdout, cursor::MoveToColumn(terminal_size.cols-1))?;
+    write!(stdout, " \u{2502}")?; // │
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
