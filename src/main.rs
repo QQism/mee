@@ -25,6 +25,7 @@ fn match_event() -> Result<()> {
     let mut token = String::new();
     let mut current_max_column = 0;
     let mut selected_suggestion_idx: i32 = -1;
+    let mut is_selecting: u8 = 0;
     let mut suggestions: Vec<String> = Vec::new();
 
     let (terminal_cols, terminal_rows) = size()?;
@@ -53,8 +54,16 @@ fn match_event() -> Result<()> {
             }) => {
                 // cursor::MoveToNextLine(1);
                 // Print the suggestion move to the next line
-                echo(&mut stdout, &mut terminal_size, line.clone())?;
-                line.clear();
+                match is_selecting {
+                    1 => {
+                        is_selecting = 0;
+                        // Fill the suggestion
+                    }
+                    _ => {
+                        echo(&mut stdout, &mut terminal_size, line.clone())?;
+                        line.clear();
+                    }
+                }
             }
             Event::Key(KeyEvent { code: KeyCode::Left, .. }) => { stdout.queue(cursor::MoveLeft(1)).expect("Error"); }
             Event::Key(KeyEvent {code: KeyCode::Right, .. }) => {
@@ -64,9 +73,22 @@ fn match_event() -> Result<()> {
                 }
             }
             Event::Key(KeyEvent { code: KeyCode::Tab, .. }) => { 
-                // show_suggestions(&mut stdout, &mut terminal_size, token.clone(), &words)?;
+                selected_suggestion_idx += 1;
+
+                if selected_suggestion_idx >= (suggestions.len() as i32) {
+                    selected_suggestion_idx = 0;
+                }
+                
+                show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
             Event::Key(KeyEvent { code: KeyCode::BackTab, .. }) => { 
+                selected_suggestion_idx -= 1;
+
+                if selected_suggestion_idx <= -1 {
+                    selected_suggestion_idx = (suggestions.len() as i32) - 1;
+                }
+
+                show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Backspace,
@@ -88,7 +110,7 @@ fn match_event() -> Result<()> {
                 token = get_current_token(line.clone(), current_col);
 
                 suggestions = get_suggestions(token.clone(), &words);
-                show_suggestions(&mut stdout, &mut terminal_size, &suggestions)?;
+                show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
@@ -136,7 +158,7 @@ fn match_event() -> Result<()> {
                 // then check the right side
 
                 suggestions = get_suggestions(token.clone(), &words);
-                show_suggestions(&mut stdout, &mut terminal_size, &suggestions)?;
+                show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
             Event::Resize(columns, rows) => {
                 println!("Terminal size changed: Columns {} Rows {}", columns, rows);
@@ -200,7 +222,7 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, s
     // Start at col 3rd
     let mut col = 3;
 
-    let idx = 0;
+    let mut idx = 0;
     for word in suggestions {
         let word_spaces = word.chars().count() + 1; // there is one space between suggestions, so +1;
 
@@ -225,6 +247,20 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, s
             }
         }
 
+        if idx == selected_suggestion_idx {
+            queue!(stdout, 
+                SetBackgroundColor(Color::White),
+                SetForegroundColor(Color::Black))?;
+
+            write!(stdout, "{}", word)?;
+
+            queue!(stdout, ResetColor)?;
+
+            write!(stdout, " ")?;
+        } else {
+            write!(stdout, "{} ", word)?;
+        }
+
         // queue!(stdout, 
         //     SetBackgroundColor(Color::White),
         //     SetForegroundColor(Color::Black))?;
@@ -234,7 +270,8 @@ fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, s
         // queue!(stdout, ResetColor)?;
 
         // write!(stdout, " ")?;
-        write!(stdout, "{} ", word)?;
+        // write!(stdout, "{} ", word)?;
+        idx += 1;
     }
 
     // write!(stdout, "{}", line)?;
@@ -270,7 +307,7 @@ fn get_suggestions(token: String, words: &Vec<String>) -> Vec<String> {
             adding_suggestion = 1;
         } else if adding_suggestion == 1 {
             // No need to check till the end of the list
-            break;
+            // break;
         }
     }
 
