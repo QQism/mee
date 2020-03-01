@@ -58,6 +58,14 @@ fn match_event() -> Result<()> {
                     1 => {
                         is_selecting = 0;
                         // Fill the suggestion
+                        let (mut current_col, _) = cursor::position().unwrap();
+                        line = update_line_with_suggestion(line, &suggestions[selected_suggestion_idx as usize], &mut current_col);
+
+                        queue!(stdout, Clear(ClearType::CurrentLine), cursor::MoveToColumn(0)).expect("Error");
+                        write!(stdout, "{}", line)?;
+                        queue!(stdout, cursor::MoveToColumn(current_col)).expect("Error");
+
+                        current_max_column = line.chars().count() as u16;
                     }
                     _ => {
                         echo(&mut stdout, &mut terminal_size, line.clone())?;
@@ -72,16 +80,18 @@ fn match_event() -> Result<()> {
                     queue!(stdout, cursor::MoveRight(1)).expect("Error");
                 }
             }
-            Event::Key(KeyEvent { code: KeyCode::Tab, .. }) => { 
+            Event::Key(KeyEvent { code: KeyCode::Tab, .. }) => {
+                is_selecting = 1;
                 selected_suggestion_idx += 1;
 
                 if selected_suggestion_idx >= (suggestions.len() as i32) {
                     selected_suggestion_idx = 0;
                 }
-                
+
                 show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
-            Event::Key(KeyEvent { code: KeyCode::BackTab, .. }) => { 
+            Event::Key(KeyEvent { code: KeyCode::BackTab, .. }) => {
+                is_selecting = 1;
                 selected_suggestion_idx -= 1;
 
                 if selected_suggestion_idx <= -1 {
@@ -125,6 +135,7 @@ fn match_event() -> Result<()> {
 
                     if c == ' ' {
                         token.clear();
+                        selected_suggestion_idx = -1;
                     } else {
                         token.push(c);
                     }
@@ -314,6 +325,63 @@ fn get_suggestions(token: String, words: &Vec<String>) -> Vec<String> {
     result
 }
 
+fn update_line_with_suggestion(line: String, selected_suggestion: &String, mut current_col: &mut u16) -> String {
+    let (left_str, right_str) = line.split_at(*current_col as usize);
+
+    let mut left_str = String::from(left_str);
+    let right_str = String::from(right_str);
+
+    loop {
+        let c = left_str.pop();
+
+        match c {
+            None => {
+                *current_col += 1;
+                break;
+            }
+            Some(' ') => {
+                left_str.push(' ');
+                *current_col += 1;
+                break;
+            }
+            _ => {
+                *current_col -= 1;
+            }
+        }
+    }
+
+    let mut right_char_iter = right_str.chars();
+    let mut removing_char = 1;
+    let mut new_right_str = String::new();
+
+    loop {
+        let c = right_char_iter.next();
+
+        match c {
+            None => {
+                break;
+            }
+            Some(' ') => {
+                removing_char = 0;
+                new_right_str.push(' ');
+            }
+            _ => {
+                if removing_char != 1 {
+                    new_right_str.push(c.unwrap());
+                }
+            }
+        }
+
+    }
+
+    *current_col += selected_suggestion.chars().count() as u16;
+
+    left_str.push_str(&selected_suggestion);
+    left_str.push_str(&new_right_str);
+
+    left_str
+}
+
 fn get_current_token(line: String, current_col: u16) -> String {
     let mut token = String::new();
 
@@ -340,7 +408,7 @@ fn get_current_token(line: String, current_col: u16) -> String {
 
                 left_part.push(c.unwrap());
             }
-        } 
+        }
     }
     // Then check the right side
     let mut right_part = String::new();
