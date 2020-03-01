@@ -78,59 +78,57 @@ fn match_event() -> Result<()> {
                 current_max_column -= 1;
 
                 // Detect the current token
+                let line_count = line.chars().count() as u16;
+
                 let mut new_col = (current_col - 1) as usize;
-                let mut char_iter = line.chars();
+                let mut char_iter = line.chars().rev();
 
                 // Check the left side
                 let mut left_part = String::new();
 
                 if new_col > 0 {
-                    loop {
-                        // println!("new_col {}", new_col);
-                        let c = char_iter.nth(new_col-1);
+                    let c = char_iter.nth((line_count as usize) - new_col); // reverse iter reaches to the current char, and discards all the right letters
 
-                        if c == None || c == Some(' ') {
-                            break;
-                        }
-
+                    if c != None && c != Some(' ') {
                         left_part.push(c.unwrap());
 
-                        new_col -= 1;
+                        loop {
+                            let c = char_iter.next();
 
-                        if new_col < 1 {
-                            break;
+                            if c == None || c == Some(' ') {
+                                break;
+                            }
+
+                            left_part.push(c.unwrap());
                         }
-                    }
+                    } 
                 }
                 // Then check the right side
                 let mut right_part = String::new();
+                let mut right_char_iter = line.chars();
 
                 new_col = (current_col-1) as usize;
 
-                let line_count = (line.chars().count() as u16);
-
                 if new_col < (line_count as usize) {
+                    let c = right_char_iter.nth(new_col);
 
-                    loop {
-                        let c = char_iter.nth(new_col-1);
-
-                        if c == None || c == Some(' ') {
-                            break;
-                        }
-
+                    if c != None && c != Some(' ') {
                         right_part.push(c.unwrap());
 
-                        new_col += 1;
+                        loop {
+                            let c = right_char_iter.next();
 
-                        if new_col >= (line_count as usize) {
-                            break;
+                            if c == None || c == Some(' ') {
+                                break;
+                            }
+
+                            right_part.push(c.unwrap());
                         }
                     }
                 }
 
                 token.clear();
-                println!("\nLeft: {}", left_part);
-                println!("\nRight: {}", right_part);
+
                 loop {
                     let c = left_part.pop();
                     if c == None {
@@ -141,7 +139,6 @@ fn match_event() -> Result<()> {
                 }
 
                 token.push_str(&right_part);
-                println!("\nToken: {}", token);
 
                 show_suggestions(&mut stdout, &mut terminal_size, token.clone(), &words)?;
             }
@@ -177,7 +174,7 @@ fn match_event() -> Result<()> {
                     line.push_str(&first_str);
                     line.push(c);
                     line.push_str(&second_str);
-                    // print!("{}", line);
+
                     write!(stdout, "{}", line)?;
                     queue!(stdout, cursor::RestorePosition, cursor::MoveRight(1)).expect("Error");
                 }
