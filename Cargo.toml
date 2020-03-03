@@ -14,3 +14,7 @@ rutie = "0.6.1"
 [dependencies.crossterm]
 version = "0.14"
 features = ["event-stream"]
+
+[lib]
+name = "mee_console"
+crate-type = ["cdylib"]

@@ -1,3 +1,7 @@
+#[macro_use]
+extern crate rutie;
+
+use rutie::{Class, Object, RString, VM, NilClass, Module};
 use std::io::{stdout, Write, Stdout};
 use crossterm::{
     cursor,
@@ -68,7 +72,18 @@ fn match_event() -> Result<()> {
                         current_max_column = line.chars().count() as u16;
                     }
                     _ => {
+
+                        let arguments = [RString::new_utf8(&line).to_any_object()];
+
+                        let result = Module::from_existing("Mee").get_nested_class("Console").send("evaluate", &arguments);
+
+                        let string = match result.try_convert_to::<RString> () {
+                            Ok(ruby_string) => ruby_string.to_string(),
+                            Err(_) => "Fail!".to_string()
+                        };
+
                         echo(&mut stdout, &mut terminal_size, line.clone())?;
+                        echo(&mut stdout, &mut terminal_size, string)?;
                         line.clear();
                     }
                 }
@@ -476,7 +491,7 @@ fn load_words() -> Vec<String> {
     words
 }
 
-fn main() -> Result<()> {
+fn start_console() -> Result<()> {
     enable_raw_mode()?;
 
     let mut stdout = stdout();
@@ -493,3 +508,24 @@ fn main() -> Result<()> {
 
     disable_raw_mode()
 }
+
+class!(MeeConsole);
+
+methods!(
+    MeeConsole,
+    _itself,
+
+    fn pub_start() -> NilClass {
+        start_console();
+        NilClass::new()
+    }
+);
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn Init_mee() {
+    Class::new("MeeConsole", None).define(|itself| {
+        itself.def_self("start", pub_start);
+    });
+}
+
