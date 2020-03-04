@@ -45,6 +45,9 @@ fn match_event() -> Result<()> {
         let event = read()?;
 
         match event {
+            // TODO: Needs to handle events
+            // - CTRL + L to clear screen
+            // - CTRL + C/V to copy/paste clipboard
             Event::Key(KeyEvent {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CONTROL
@@ -83,7 +86,7 @@ fn match_event() -> Result<()> {
                         };
 
                         echo(&mut stdout, &mut terminal_size, line.clone())?;
-                        echo(&mut stdout, &mut terminal_size, string)?;
+                        show_result(&mut stdout, &mut terminal_size, string)?;
                         line.clear();
                     }
                 }
@@ -465,14 +468,24 @@ fn get_current_token(line: String, current_col: u16) -> String {
     token
 }
 
+fn show_result(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+    clear_suggestions(&mut stdout)?;
+
+    queue!(stdout, cursor::MoveToNextLine(1))?;
+
+    write!(stdout, "=> {}", line)?;
+
+    queue!(stdout, cursor::MoveToNextLine(1))?;
+
+    Ok(())
+}
+
 fn echo(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
     clear_suggestions(&mut stdout)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
-    write!(stdout, "You typed: {}", line)?;
-
-    queue!(stdout, cursor::MoveToNextLine(1))?;
+    write!(stdout, "{}", line)?;
 
     Ok(())
 }
