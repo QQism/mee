@@ -1,14 +1,15 @@
 #[macro_use]
 extern crate rutie;
 
-use rutie::{Class, Object, RString, VM, NilClass, Module};
+use rutie::{Class, Object, RString, NilClass, Module, Hash, Symbol, Array};
+use std::collections::BTreeMap;
 use std::io::{stdout, Write, Stdout};
 use crossterm::{
     cursor,
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, size, ScrollUp},
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    style::{Color, ResetColor, SetBackgroundColor, SetForegroundColor},
     QueueableCommand,
     queue,
     Result,
@@ -39,7 +40,8 @@ fn match_event() -> Result<()> {
         rows: terminal_rows,
     };
 
-    let words = load_words();
+    // let words = load_words();
+    let mut words : Vec<_> = load_initial_suggestions().keys().map(|s| s.to_owned() ).collect();
 
     loop {
         let event = read()?;
@@ -88,6 +90,8 @@ fn match_event() -> Result<()> {
                         echo(&mut stdout, &mut terminal_size, line.clone())?;
                         show_result(&mut stdout, &mut terminal_size, string)?;
                         line.clear();
+
+                        words = load_initial_suggestions().keys().map(|s| s.to_owned() ).collect();
                     }
                 }
             }
@@ -331,7 +335,7 @@ fn get_suggestions(token: String, words: &Vec<String>) -> Vec<String> {
     let mut adding_suggestion: u16 = 0;
 
     for word in words {
-        if word.starts_with(&token.to_lowercase()) {
+        if word.starts_with(&token) {
             result.push(word.to_string());
             adding_suggestion = 1;
         } else if adding_suggestion == 1 {
@@ -343,7 +347,7 @@ fn get_suggestions(token: String, words: &Vec<String>) -> Vec<String> {
     result
 }
 
-fn update_line_with_suggestion(line: String, selected_suggestion: &String, mut current_col: &mut u16) -> String {
+fn update_line_with_suggestion(line: String, selected_suggestion: &String, current_col: &mut u16) -> String {
     let (left_str, right_str) = line.split_at(*current_col as usize);
 
     let mut left_str = String::from(left_str);
@@ -468,7 +472,7 @@ fn get_current_token(line: String, current_col: u16) -> String {
     token
 }
 
-fn show_result(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+fn show_result(mut stdout: &mut Stdout, _terminal_size: &mut TerminalSize, line: String) -> Result<()> {
     clear_suggestions(&mut stdout)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
@@ -480,7 +484,7 @@ fn show_result(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: 
     Ok(())
 }
 
-fn echo(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+fn echo(mut stdout: &mut Stdout, _terminal_size: &mut TerminalSize, line: String) -> Result<()> {
     clear_suggestions(&mut stdout)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
@@ -502,6 +506,34 @@ fn load_words() -> Vec<String> {
     }
 
     words
+}
+
+fn load_initial_suggestions() -> BTreeMap<String, Vec<String>> {
+    let result = Module::from_existing("Mee").get_nested_class("Console").send("initial_suggestions", &[]);
+
+    let mut suggestions : BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    match result.try_convert_to::<Hash> () {
+        Ok(ruby_hash) => {
+            ruby_hash.each(|key, value| {
+
+                let mut values : Vec<String> = Vec::new();
+
+                let arr = value.try_convert_to::<Array>().unwrap();
+
+                for idx in 0..arr.length() {
+                    values.push(arr.at(idx as i64).try_convert_to::<RString>().unwrap().to_string());
+                }
+
+                suggestions.insert(
+                    key.try_convert_to::<Symbol>().unwrap().to_string(),
+                    values);
+            });
+        }
+        Err(_) => {}
+    };
+
+    suggestions
 }
 
 fn start_console() -> Result<()> {
