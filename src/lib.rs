@@ -54,15 +54,13 @@ fn match_event() -> Result<()> {
                 code: KeyCode::Char('c'),
                 modifiers: KeyModifiers::CONTROL
             }) => {
-                clear_suggestions(&mut stdout)?;
+                clear_suggestions(&mut stdout, &mut terminal_size)?;
                 break;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Enter,
                 ..
             }) => {
-                // cursor::MoveToNextLine(1);
-                // Print the suggestion move to the next line
                 match is_selecting {
                     1 => {
                         is_selecting = 0;
@@ -77,6 +75,7 @@ fn match_event() -> Result<()> {
                         current_max_column = line.chars().count() as u16;
                     }
                     _ => {
+                        // evaluate the statement
 
                         let arguments = [RString::new_utf8(&line).to_any_object()];
 
@@ -87,9 +86,10 @@ fn match_event() -> Result<()> {
                             Err(_) => "Fail!".to_string()
                         };
 
-                        echo(&mut stdout, &mut terminal_size, line.clone())?;
+                        // echo(&mut stdout, &mut terminal_size, line.clone())?;
                         show_result(&mut stdout, &mut terminal_size, string)?;
                         line.clear();
+                        token.clear();
 
                         words = load_initial_suggestions().keys().map(|s| s.to_owned() ).collect();
                     }
@@ -103,14 +103,19 @@ fn match_event() -> Result<()> {
                 }
             }
             Event::Key(KeyEvent { code: KeyCode::Tab, .. }) => {
-                is_selecting = 1;
-                selected_suggestion_idx += 1;
+                match suggestions.len() {
+                    0 => {}
+                    _ => {
+                        is_selecting = 1;
+                        selected_suggestion_idx += 1;
 
-                if selected_suggestion_idx >= (suggestions.len() as i32) {
-                    selected_suggestion_idx = 0;
+                        if selected_suggestion_idx >= (suggestions.len() as i32) {
+                            selected_suggestion_idx = 0;
+                        }
+
+                        show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
+                    }
                 }
-
-                show_suggestions(&mut stdout, &mut terminal_size, &suggestions, selected_suggestion_idx)?;
             }
             Event::Key(KeyEvent { code: KeyCode::BackTab, .. }) => {
                 is_selecting = 1;
@@ -146,7 +151,8 @@ fn match_event() -> Result<()> {
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Char(c), ..
-            }) => {let (current_col, _) = cursor::position().unwrap();
+            }) => {
+                let (current_col, _) = cursor::position().unwrap();
 
                 if line.len() == (current_col as usize) {
                     write!(stdout, "{}", c)?;
@@ -207,18 +213,36 @@ fn match_event() -> Result<()> {
     Ok(())
 }
 
-fn clear_suggestions(stdout: &mut Stdout) -> Result<()> {
-    queue!(stdout,
-           cursor::SavePosition,
-           cursor::MoveToNextLine(1),
-           Clear(ClearType::FromCursorDown),
-           cursor::RestorePosition)?;
+fn clear_suggestions(stdout: &mut Stdout, terminal_size: &mut TerminalSize) -> Result<()> {
+    let (column, row) = cursor::position().unwrap();
+
+    queue!(stdout, cursor::SavePosition)?;
+
+
+    let suggestion_height = 6; // need to >= 3
+
+    if (row + suggestion_height) >= terminal_size.rows {
+        queue!(stdout,
+               // Scroll up and move the cursor back to where it was
+               ScrollUp(suggestion_height),
+               cursor::MoveUp(suggestion_height),
+               cursor::MoveToNextLine(1),
+               Clear(ClearType::FromCursorDown),
+               cursor::MoveToPreviousLine(1),
+               cursor::MoveToColumn(column+1) // TODO: why does it need to +1?
+        )?;
+    } else {
+        queue!(stdout, cursor::MoveToNextLine(1),
+               Clear(ClearType::FromCursorDown),
+               cursor::RestorePosition
+        )?;
+    }
 
     Ok(())
 }
 
 fn show_suggestions(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, suggestions: &Vec<String>, selected_suggestion_idx: i32) -> Result<()> {
-    clear_suggestions(&mut stdout)?;
+    clear_suggestions(&mut stdout, terminal_size)?;
 
     let (_, rows) = cursor::position().unwrap();
 
@@ -472,8 +496,8 @@ fn get_current_token(line: String, current_col: u16) -> String {
     token
 }
 
-fn show_result(mut stdout: &mut Stdout, _terminal_size: &mut TerminalSize, line: String) -> Result<()> {
-    clear_suggestions(&mut stdout)?;
+fn show_result(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+    clear_suggestions(&mut stdout, terminal_size)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
@@ -484,8 +508,8 @@ fn show_result(mut stdout: &mut Stdout, _terminal_size: &mut TerminalSize, line:
     Ok(())
 }
 
-fn echo(mut stdout: &mut Stdout, _terminal_size: &mut TerminalSize, line: String) -> Result<()> {
-    clear_suggestions(&mut stdout)?;
+fn echo(mut stdout: &mut Stdout, terminal_size: &mut TerminalSize, line: String) -> Result<()> {
+    clear_suggestions(&mut stdout, terminal_size)?;
 
     queue!(stdout, cursor::MoveToNextLine(1))?;
 
