@@ -161,11 +161,20 @@ fn match_event() -> Result<()> {
 
                     // update the current token
 
-                    if c == ' ' {
-                        token.clear();
-                        selected_suggestion_idx = -1;
-                    } else {
-                        token.push(c);
+                    match c {
+                        ' ' => {
+                            token.clear();
+                            selected_suggestion_idx = -1;
+                        }
+                        '.' => {
+
+                        }
+                        ':' => {
+                            
+                        }
+                        _ => {
+                            token.push(c);
+                        }
                     }
                 } else if line.len() < (current_col as usize) {
                     // Not possible, the cursor cannot be further the current line
